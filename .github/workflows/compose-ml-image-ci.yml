@@ -1,0 +1,27 @@
+name: Compose ML image validation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build and start the application
+        run: docker compose up --build --detach --wait --wait-timeout 120
+
+      - name: Validate the app and packaged model
+        run: bash scripts/validate_container.sh
+
+      - name: Stop the application
+        if: always()
+        run: docker compose down --remove-orphans

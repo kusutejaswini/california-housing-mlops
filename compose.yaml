@@ -1,0 +1,7 @@
+services:
+  california-housing-ui:
+    container_name: house-container
+    build: .
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
