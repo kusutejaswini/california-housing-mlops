@@ -1,0 +1,79 @@
+name: Build, validate, and publish v2 image
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-validate-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Build v2 and commit-tagged images
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+        run: |
+          docker build \
+            --tag "$IMAGE_NAME:v2" \
+            --tag "$IMAGE_NAME:${GITHUB_SHA}" \
+            .
+
+      - name: Start container and verify the app
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.name }}:${{ github.sha }}
+        run: |
+          docker run --detach --name california-housing-v2-smoke --publish 8501:8501 "$IMAGE_TAG"
+
+          ready=false
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://127.0.0.1:8501/_stcore/health; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" != true ]; then
+            docker logs california-housing-v2-smoke
+            exit 1
+          fi
+
+          curl --fail --silent --show-error http://127.0.0.1:8501/ > /dev/null
+
+      - name: Validate bundled model prediction
+        run: |
+          docker exec california-housing-v2-smoke python -c "import math, mlflow.sklearn; model = mlflow.sklearn.load_model('/app/model'); predictions = model.predict([[5.0, 20.0, 5.0, 1.0, 1000.0, 3.0, 36.0, -120.0]]); assert len(predictions) == 1 and math.isfinite(float(predictions[0]))"
+
+      - name: Stop smoke-test container
+        if: always()
+        run: docker rm --force california-housing-v2-smoke || true
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish v2 and commit-tagged images
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+        run: |
+          docker push "$IMAGE_NAME:v2"
+          docker push "$IMAGE_NAME:${GITHUB_SHA}"

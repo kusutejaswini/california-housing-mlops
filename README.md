@@ -37,18 +37,26 @@ docker build -t california-housing-ui .
 docker run --rm -p 8501:8501 california-housing-ui
 ```
 
-## Build and validate with GitHub Actions
+## Build, validate, and publish with GitHub Actions
 
-Two independent workflows build and validate the image:
+The workflows build and validate the image:
 
 - `.github/workflows/docker-image.yml` builds and runs the image directly.
 - `.github/workflows/compose-ml-image-ci.yml` uses Docker Compose and runs
   `scripts/validate_container.sh`.
+- `.github/workflows/publish-docker-v2.yml` validates the image and publishes
+  `ghcr.io/<owner>/<repository>:v2` and a commit-SHA tag to GitHub Container
+  Registry on pushes to `main`.
 
-Both run on every push, pull request, and manual dispatch from the **Actions**
-tab. They check the Streamlit health endpoint and page, and verify that the
-packaged model can produce a finite prediction. Neither workflow publishes
-the image or requires Docker Hub secrets.
+The workflows run on pushes, pull requests, and manual dispatch from the
+**Actions** tab. They check the Streamlit health endpoint and page, and verify
+that the packaged model can produce a finite prediction. The publish workflow
+uses GitHub's built-in token; no Docker Hub secrets are needed. Find the image
+under the repository owner's **Packages** page, or pull it with:
+
+```powershell
+docker pull ghcr.io/kusutejaswini/california-housing-mlops:v2
+```
 
 ## Model input features
 
